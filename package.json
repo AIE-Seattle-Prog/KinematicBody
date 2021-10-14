@@ -1,0 +1,13 @@
+{
+  "name": "com.aie-seattle-prog.kinematic-body",
+  "version": "0.0.1",
+  "displayName": "KinematicBody",
+  "description": "A fully kinematic body setup for developing player controlled objects.",
+  "unity": "2019.3",
+  "author": {
+    "name": "Academy of Interactive Entertainment",
+    "email": "seattle@aie.edu",
+    "url": "https://aie.edu"
+  },
+  "scopedRegistries": []
+}
