@@ -1,0 +1,15 @@
+{
+    "name": "KinematicBody",
+    "references": [
+        "GUID:104595e1d6643554986a07a0cfb2d1dc"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
