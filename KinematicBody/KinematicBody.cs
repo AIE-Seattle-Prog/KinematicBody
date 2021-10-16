@@ -89,7 +89,7 @@ public class KinematicBody : MonoBehaviour
             
         bool isOverlap = Physics.ComputePenetration(col,
             bodyPosition,
-            rbody.rotation,
+            bodyRotation,
             other,
             other.transform.position,
             other.transform.rotation,
@@ -100,6 +100,7 @@ public class KinematicBody : MonoBehaviour
         {
             // defer to motor to resolve hit
             motor.OnMoveHit(ref bodyPosition, ref bodyRotation, ref bodyVelocity, other, mtv, pen);
+            Debug.Log($"{other.name}, {mtv} * {pen} => {bodyVelocity}");
         }
     }
     
@@ -124,6 +125,15 @@ public class KinematicBody : MonoBehaviour
         List<RaycastHit> filteredhits = new List<RaycastHit>(allHits);
         filteredhits.RemoveAll( x => x.collider == col);
         return filteredhits.ToArray();
+    }
+
+    public RaycastHit[] Trace(Vector3 startBodyPosition, Vector3 endBodyPosition, int layerMask = ~0, QueryTriggerInteraction queryMode = QueryTriggerInteraction.UseGlobal)
+    {
+        Vector3 offset = endBodyPosition - startBodyPosition;
+        float len = offset.magnitude;
+
+        Vector3 dir = offset / len;
+        return Cast(startBodyPosition, dir, len, layerMask, queryMode);
     }
     
     //
@@ -157,6 +167,13 @@ public class KinematicBody : MonoBehaviour
         Vector3 projectedVel = InternalVelocity;
         Quaternion projectedRot = rbody.rotation;
 
+        Debug.Log($"START of DEPEN, {projectedVel}");
+        var sweepHits = Trace(startPosition, projectedPos, -1, QueryTriggerInteraction.Ignore);
+        for(int i = 0; i < sweepHits.Length; ++i)
+        {
+            motor.OnMoveHit(ref projectedPos, ref projectedRot, ref projectedVel, sweepHits[i].collider, sweepHits[i].normal, 0.0f);
+        }
+
         //
         // depenetrate from overlapping objects
         //
@@ -173,12 +190,14 @@ public class KinematicBody : MonoBehaviour
         //       we need to assign it directly to the collide prior to calling it and then
         //       revert the change afterwards
         col.size = sizeWithSkin;
+
         
         foreach (var candidate in candidates)
         {
             DeferredCollideAndSlide(ref projectedPos, ref projectedRot, ref projectedVel, candidate);
         }
-        
+        Debug.Log($"END of DEPEN, {projectedVel}");
+
         // HACK: restoring size (see above HACK)
         col.size = sizeOriginal;
         
