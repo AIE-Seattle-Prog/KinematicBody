@@ -12,7 +12,30 @@ public class KinematicBody : MonoBehaviour
     /// <summary>
     /// Motor driving this body
     /// </summary>
-    public IKinematicMotor motor;
+    public IKinematicMotor Motor
+    {
+        get => motor;
+        set
+        {
+            if(value as UnityEngine.Component)
+            {
+                var uObject = value as UnityEngine.Component;
+                if(uObject.TryGetComponent<IKinematicMotorCollisionHandler>(out var handler))
+                {
+                    selfHandler = handler;
+                }
+                else
+                {
+                    selfHandler = null;
+                }
+            }
+
+            motor = value;
+        }
+    }
+    [SerializeField]
+    private IKinematicMotor motor;
+    private IKinematicMotorCollisionHandler selfHandler;
     
     [Header("Body Definition")]
 #pragma warning disable 0649 // Assigned in Unity inspector
@@ -95,6 +118,8 @@ public class KinematicBody : MonoBehaviour
     public int CollisionCount { get; private set; }
     public int TriggerCount { get; private set; }
 
+    public bool SendCollisionEvents = false;
+
     public MoveCollision GetCollision(int index)
     {
         if(index >= CollisionCount || index < 0) { throw new IndexOutOfRangeException(); }
@@ -131,7 +156,6 @@ public class KinematicBody : MonoBehaviour
             out var mtv,
             out var pen);
 
-
         if (isOverlap && pen > skinWidth)
         {
             MoveCollision collision = new MoveCollision
@@ -148,7 +172,7 @@ public class KinematicBody : MonoBehaviour
             if (!other.isTrigger)
             {
                 // defer to motor to resolve hit
-                motor.OnMoveHit(ref bodyPosition, ref bodyRotation, ref bodyVelocity, other, mtv, pen);
+                Motor.OnMoveHit(ref bodyPosition, ref bodyRotation, ref bodyVelocity, other, mtv, pen);
                 if (CollisionCount < MAX_COLLISIONS) { LastCollisions[CollisionCount++] = collision; }
             }
             // triggers
@@ -204,12 +228,12 @@ public class KinematicBody : MonoBehaviour
     {
         Vector3 startPosition = rbody.position;
         
-        motor.OnPreMove();
+        Motor.OnPreMove();
 
         CollisionCount = 0;
         TriggerCount = 0;
 
-        InternalVelocity = motor.UpdateVelocity(InternalVelocity);
+        InternalVelocity = Motor.UpdateVelocity(InternalVelocity);
 
         //
         // integrate external forces
@@ -251,7 +275,7 @@ public class KinematicBody : MonoBehaviour
         col.size = sizeOriginal;
         
         // callback: pre-processing move before applying 
-        motor.OnFinishMove(ref projectedPos, ref projectedRot, ref projectedVel);
+        Motor.OnFinishMove(ref projectedPos, ref projectedRot, ref projectedVel);
         
         // apply move
         rbody.MovePosition(projectedPos);
@@ -261,7 +285,64 @@ public class KinematicBody : MonoBehaviour
         Velocity = (projectedPos - startPosition) / Time.fixedDeltaTime;
         
         // callback for after move is complete
-        motor.OnPostMove();
+        Motor.OnPostMove();
+
+        if(SendCollisionEvents)
+        {
+            // send collisions
+            for(int i = 0; i < CollisionCount; ++i)
+            {
+                // are we scheduled to handle collisions?
+                if (selfHandler != null) { selfHandler.OnKinematicCollision(LastCollisions[i]); }
+
+                MoveCollision edit = LastCollisions[i];
+                edit.otherCollider = BodyCollider;
+
+                IKinematicMotorCollisionHandler handler = null;
+                Rigidbody otherRb = LastCollisions[i].OtherRigidbody;
+                if (otherRb != null)
+                {
+                    otherRb.TryGetComponent<IKinematicMotorCollisionHandler>(out handler);
+                }
+                else
+                {
+                    LastCollisions[i].otherCollider.TryGetComponent<IKinematicMotorCollisionHandler>(out handler);
+                }
+
+                // send the event if there's a handler
+                if(handler != null)
+                {
+                    handler.OnKinematicCollision(edit);
+                }
+            }
+
+            // send triggers
+            for (int i = 0; i < TriggerCount; ++i)
+            {
+                // are we scheduled to handle collisions?
+                if (selfHandler != null) { selfHandler.OnKinematicTrigger(LastTriggers[i]); }
+
+                MoveCollision edit = LastTriggers[i];
+                edit.otherCollider = BodyCollider;
+
+                IKinematicMotorCollisionHandler handler = null;
+                Rigidbody otherRb = LastCollisions[i].OtherRigidbody;
+                if (otherRb != null)
+                {
+                    otherRb.TryGetComponent<IKinematicMotorCollisionHandler>(out handler);
+                }
+                else
+                {
+                    LastTriggers[i].otherCollider.TryGetComponent<IKinematicMotorCollisionHandler>(out handler);
+                }
+
+                // send the event if there's a handler
+                if (handler != null)
+                {
+                    handler.OnKinematicTrigger(edit);
+                }
+            }
+        }
     }
 
     private void OnValidate()
@@ -343,4 +424,10 @@ public interface IKinematicMotor
     /// Called after the body has moved to its final position for this frame
     /// </summary>
     void OnPostMove();
+}
+
+public interface IKinematicMotorCollisionHandler
+{
+    void OnKinematicCollision(KinematicBody.MoveCollision collision);
+    void OnKinematicTrigger(KinematicBody.MoveCollision trigger);
 }

@@ -224,7 +224,7 @@ public class KinematicPlayerMotor : MonoBehaviour, IKinematicMotor
 
     private void Start()
     {
-        body.motor = this;
+        body.Motor = this;
     }
 
     private void Reset()
