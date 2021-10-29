@@ -69,8 +69,43 @@ public class KinematicBody : MonoBehaviour
         }
     }
     
-    public Vector3 InternalVelocity { get; private set; }
+    public Vector3 InternalVelocity { get; set; }
     public Vector3 Velocity { get; private set; }
+
+    public Vector3 VelocityXZ { get { Vector3 v = Velocity; v.y = 0.0f; return v; } }
+    public Vector3 VelocityXY { get { Vector3 v = Velocity; v.z = 0.0f; return v; } }
+
+    [System.Serializable]
+    public struct MoveCollision
+    {
+        public Vector3 bodyPosition;
+        public Quaternion bodyRotation;
+
+        public Vector3 bodyVelocity;
+        public Collider otherCollider;
+        public Rigidbody OtherRigidbody => otherCollider.attachedRigidbody;
+
+        public Vector3 collisionDirection;
+        public float collisionPenetration;
+    }
+
+    public readonly static int MAX_COLLISIONS = 32;
+    private MoveCollision[] LastCollisions = new MoveCollision[MAX_COLLISIONS];
+    private MoveCollision[] LastTriggers = new MoveCollision[MAX_COLLISIONS];
+    public int CollisionCount { get; private set; }
+    public int TriggerCount { get; private set; }
+
+    public MoveCollision GetCollision(int index)
+    {
+        if(index >= CollisionCount || index < 0) { throw new IndexOutOfRangeException(); }
+        return LastCollisions[index];
+    }
+
+    public MoveCollision GetTrigger(int index)
+    {
+        if (index >= CollisionCount || index < 0) { throw new IndexOutOfRangeException(); }
+        return LastTriggers[index];
+    }
 
     public void CollideAndSlide(Vector3 bodyPosition, Quaternion bodyRotation, Vector3 bodyVelocity, Collider other)
     {
@@ -96,11 +131,31 @@ public class KinematicBody : MonoBehaviour
             out var mtv,
             out var pen);
 
+
         if (isOverlap && pen > skinWidth)
         {
-            // defer to motor to resolve hit
-            motor.OnMoveHit(ref bodyPosition, ref bodyRotation, ref bodyVelocity, other, mtv, pen);
-            Debug.Log($"{other.name}, {mtv} * {pen} => {bodyVelocity}");
+            MoveCollision collision = new MoveCollision
+            {
+                bodyPosition = bodyPosition,
+                bodyRotation = bodyRotation,
+                bodyVelocity = bodyVelocity,
+                otherCollider = other,
+                collisionDirection = mtv,
+                collisionPenetration = pen
+            };
+
+            // collisions
+            if (!other.isTrigger)
+            {
+                // defer to motor to resolve hit
+                motor.OnMoveHit(ref bodyPosition, ref bodyRotation, ref bodyVelocity, other, mtv, pen);
+                if (CollisionCount < MAX_COLLISIONS) { LastCollisions[CollisionCount++] = collision; }
+            }
+            // triggers
+            else
+            {
+                if (TriggerCount < MAX_COLLISIONS) { LastTriggers[TriggerCount++] = collision; }
+            }
         }
     }
     
@@ -150,7 +205,10 @@ public class KinematicBody : MonoBehaviour
         Vector3 startPosition = rbody.position;
         
         motor.OnPreMove();
-        
+
+        CollisionCount = 0;
+        TriggerCount = 0;
+
         InternalVelocity = motor.UpdateVelocity(InternalVelocity);
 
         //
@@ -167,13 +225,6 @@ public class KinematicBody : MonoBehaviour
         Vector3 projectedVel = InternalVelocity;
         Quaternion projectedRot = rbody.rotation;
 
-        Debug.Log($"START of DEPEN, {projectedVel}");
-        var sweepHits = Trace(startPosition, projectedPos, -1, QueryTriggerInteraction.Ignore);
-        for(int i = 0; i < sweepHits.Length; ++i)
-        {
-            motor.OnMoveHit(ref projectedPos, ref projectedRot, ref projectedVel, sweepHits[i].collider, sweepHits[i].normal, 0.0f);
-        }
-
         //
         // depenetrate from overlapping objects
         //
@@ -184,19 +235,17 @@ public class KinematicBody : MonoBehaviour
         Vector3 sizeOriginal = col.size;
         Vector3 sizeWithSkin = col.size + Vector3.one * contactOffset;
 
-        var candidates = Overlap(projectedPos, sizeWithSkin / 2, -1, QueryTriggerInteraction.Ignore);
+        var candidates = Overlap(projectedPos, sizeWithSkin / 2, -1, QueryTriggerInteraction.Collide);
 
         // HACK: since we can't pass a custom size to Physics.ComputePenetration (see below),
         //       we need to assign it directly to the collide prior to calling it and then
         //       revert the change afterwards
         col.size = sizeWithSkin;
 
-        
         foreach (var candidate in candidates)
         {
             DeferredCollideAndSlide(ref projectedPos, ref projectedRot, ref projectedVel, candidate);
         }
-        Debug.Log($"END of DEPEN, {projectedVel}");
 
         // HACK: restoring size (see above HACK)
         col.size = sizeOriginal;
