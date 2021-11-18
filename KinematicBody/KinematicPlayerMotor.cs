@@ -108,7 +108,7 @@ public class KinematicPlayerMotor : MonoBehaviour, IKinematicMotor
         Collider other, Vector3 direction, float pen)
     {
         Vector3 stepOffset = new Vector3(0.0f, stepHeight, 0.0f);
-        Vector3 stepInitial = curPosition + stepOffset - body.EffectiveGravity * Time.deltaTime;
+        Vector3 stepInitial = curPosition + stepOffset;
 
         // can we step over this?
         var overlaps = body.Overlap(stepInitial, body.LocalBodySizeWithSkin/2.0f, -1, QueryTriggerInteraction.Ignore);
@@ -123,7 +123,6 @@ public class KinematicPlayerMotor : MonoBehaviour, IKinematicMotor
                     Vector3 offset = stepInitial - hit.point;
                     offset.y = 0.0f;
 
-                    Debug.DrawRay(hit.point, Vector3.up, Color.red, 0.1f);
                     curPosition = hit.point + offset - body.FootOffset;
                     return true;
                 }
