@@ -111,20 +111,23 @@ public class KinematicPlayerMotor : MonoBehaviour, IKinematicMotor
         Vector3 stepInitial = curPosition + stepOffset;
 
         // can we step over this?
-        var overlaps = body.Overlap(stepInitial, body.LocalBodySizeWithSkin/2.0f, -1, QueryTriggerInteraction.Ignore);
-        if (overlaps.Length == 0 ||
-            (overlaps.Length == 1 && overlaps[0] == body.BodyCollider))
+        if (wasGrounded)
         {
-            var hits = body.Cast(stepInitial, Vector3.down, Mathf.Infinity, -1, QueryTriggerInteraction.Ignore);
-            foreach (var hit in hits)
+            var overlaps = body.Overlap(stepInitial, body.LocalBodySizeWithSkin / 2.0f, -1, QueryTriggerInteraction.Ignore);
+            if (overlaps.Length == 0 ||
+                (overlaps.Length == 1 && overlaps[0] == body.BodyCollider))
             {
-                if (hit.collider == other)
+                var hits = body.Cast(stepInitial, Vector3.down, Mathf.Infinity, -1, QueryTriggerInteraction.Ignore);
+                foreach (var hit in hits)
                 {
-                    Vector3 offset = stepInitial - hit.point;
-                    offset.y = 0.0f;
+                    if (hit.collider == other)
+                    {
+                        Vector3 offset = stepInitial - hit.point;
+                        offset.y = 0.0f;
 
-                    curPosition = hit.point + offset - body.FootOffset;
-                    return true;
+                        curPosition = hit.point + offset - body.FootOffset;
+                        return true;
+                    }
                 }
             }
         }

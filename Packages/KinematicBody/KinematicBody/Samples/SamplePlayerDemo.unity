@@ -1479,6 +1479,16 @@ PrefabInstance:
       propertyPath: m_Name
       value: SamplePlayer
       objectReference: {fileID: 0}
+    - target: {fileID: 1631130482782817082, guid: e0c010da1117f5549a6d8be69a2fbd1a,
+        type: 3}
+      propertyPath: stepHeight
+      value: 0.2
+      objectReference: {fileID: 0}
+    - target: {fileID: 1631130482782817083, guid: e0c010da1117f5549a6d8be69a2fbd1a,
+        type: 3}
+      propertyPath: skinWidth
+      value: 0.15
+      objectReference: {fileID: 0}
     - target: {fileID: 1631130482782817084, guid: e0c010da1117f5549a6d8be69a2fbd1a,
         type: 3}
       propertyPath: m_LocalPosition.x
@@ -2326,7 +2336,7 @@ GameObject:
   - component: {fileID: 1418590110}
   - component: {fileID: 1418590109}
   m_Layer: 0
-  m_Name: Straight Barrier (Low) (1)
+  m_Name: Step
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
