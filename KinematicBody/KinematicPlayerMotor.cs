@@ -39,6 +39,8 @@ public class KinematicPlayerMotor : MonoBehaviour, IKinematicMotor
     
     public bool Grounded { get; private set; }
     private bool wasGrounded;
+
+    public float stepHeight = 0.1f;
     
     [Header("Air Movement")]
     public float airAccel = 50.0f;
@@ -100,6 +102,35 @@ public class KinematicPlayerMotor : MonoBehaviour, IKinematicMotor
     public Vector3 ClipVelocity(Vector3 inputVelocity, Vector3 normal)
     {
         return Vector3.ProjectOnPlane(inputVelocity, normal);
+    }
+
+    private bool AttemptStep(ref Vector3 curPosition, ref Quaternion curRotation, ref Vector3 curVelocity,
+        Collider other, Vector3 direction, float pen)
+    {
+        Vector3 stepOffset = new Vector3(0.0f, stepHeight, 0.0f);
+        Vector3 stepInitial = curPosition + stepOffset - body.EffectiveGravity * Time.deltaTime;
+
+        // can we step over this?
+        var overlaps = body.Overlap(stepInitial, body.LocalBodySizeWithSkin/2.0f, -1, QueryTriggerInteraction.Ignore);
+        if (overlaps.Length == 0 ||
+            (overlaps.Length == 1 && overlaps[0] == body.BodyCollider))
+        {
+            var hits = body.Cast(stepInitial, Vector3.down, Mathf.Infinity, -1, QueryTriggerInteraction.Ignore);
+            foreach (var hit in hits)
+            {
+                if (hit.collider == other)
+                {
+                    Vector3 offset = stepInitial - hit.point;
+                    offset.y = 0.0f;
+
+                    Debug.DrawRay(hit.point, Vector3.up, Color.red, 0.1f);
+                    curPosition = hit.point + offset - body.FootOffset;
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     //
@@ -172,9 +203,15 @@ public class KinematicPlayerMotor : MonoBehaviour, IKinematicMotor
             
             Grounded = true;
         }
-        // other
+        // other (wall/obstacle/stairs)
         else
         {
+            // can we step over this?
+            bool stepped = AttemptStep(ref curPosition, ref curRotation, ref curVelocity, other, direction, pen);
+            // early exit if we could step over
+            if(stepped) { return; }
+            
+            // stepping failed, use normal resolution logic
             curPosition += direction * (pen);
             curVelocity = clipped;
         }

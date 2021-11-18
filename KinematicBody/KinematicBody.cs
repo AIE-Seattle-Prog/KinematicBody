@@ -180,7 +180,6 @@ public class KinematicBody : MonoBehaviour
     public Collider[] Overlap(Vector3 bodyPosition, Vector3 bodyHalfExtents, int layerMask = ~0, QueryTriggerInteraction queryMode = QueryTriggerInteraction.UseGlobal)
     {
         bodyPosition = GetCenterAtBodyPosition(bodyPosition);
-        // TODO: this needs to exclude itself from the list of overlaps
         return Physics.OverlapBox(bodyPosition, bodyHalfExtents, rbody.rotation, layerMask, queryMode);
     }
     
