@@ -108,6 +108,7 @@ public class KinematicBody : MonoBehaviour
     public int TriggerCount { get; private set; }
 
     public bool SendCollisionEvents = false;
+    private HashSet<UnityEngine.Object> collisionHistory = new HashSet<UnityEngine.Object>();
 
     public MoveCollision GetCollision(int index)
     {
@@ -157,6 +158,7 @@ public class KinematicBody : MonoBehaviour
                 collisionPenetration = pen
             };
 
+
             // collisions
             if (!other.isTrigger)
             {
@@ -201,6 +203,13 @@ public class KinematicBody : MonoBehaviour
 
         Vector3 dir = offset / len;
         return Cast(startBodyPosition, dir, len, layerMask, queryMode);
+    }
+
+    private UnityEngine.Object FindCollisionMessageReciever(Collider other)
+    {
+        Rigidbody rb = other.attachedRigidbody;
+        if(rb != null) { return rb; }
+        else { return other; }
     }
     
     //
