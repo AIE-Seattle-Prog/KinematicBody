@@ -70,7 +70,7 @@ public class KinematicBody : MonoBehaviour
     }
 
     /// <summary>
-    /// The Internal Velocity of the player represents their ideal velocity, in
+    /// The Internal Velocity of the player represents their ideal velocity
     /// </summary>    
     public Vector3 InternalVelocity { get; set; }
     public Vector3 Velocity { get; private set; }
