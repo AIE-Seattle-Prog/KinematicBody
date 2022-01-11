@@ -3,7 +3,7 @@
 A reference implementation of a KinematicBody intended for use with an upright
 box collider that does not rotate.
 
-This package should support any version of **Unity 2019.3** or newer.
+This package should support any version of **Unity 2020.3** or newer.
 
 > :warning: **WARNING**  
 > This package is in an experimental state and has not been extensively
@@ -28,8 +28,16 @@ which adopts the following convention:
 
 ### Git UPM Dependency
 
-The KinematicBody package can be added as a dependency by adding it as an
-entry to the `Packages/manifest.json` file under the `dependencies` array:
+The KinematicBody package can be added as a Git dependency.
+
+Git dependencies can be added the Unity Package Manager by providing the URL and ref to the UPM package:
+
+```text
+https://github.com/AIE-Seattle-Prog/KinematicBody.git#upm
+```
+
+You can also manually edit the `Packages/manifest.json` to include the following
+in the `dependencies` array:
 
 ```text
     "com.aie-seattle-prog.kinematic-body": "https://github.com/AIE-Seattle-Prog/KinematicBody.git#upm"
@@ -62,7 +70,7 @@ Packages/
 ## Quick Start
 
 To review an expected setup for the character, review the sample scene under
-KinematicBody/Samples/SamplePlayerDemo.unity in the package.
+**KinematicBody/Samples/SamplePlayerDemo.unity** in the package.
 
 ## API
 
@@ -102,6 +110,59 @@ All of the steps listed in a round white box are callbacks that are called by
 the body at the appropriate stage in the process. Steps shown in gray and
 rectangular boxes are performed internally by the body and may not necessarily
 map 1:1 to a method.
+
+### Collision Events
+
+When a KinematicBody moves, it gathers collision and trigger events for
+further processing.
+
+User code can query this from the body by calling `KinematicBody.CollisionCount`
+and `KinematicBody.TriggerCount` on an instance to determine how many collisions
+or triggers it encountered. These can then be retrieved by calling
+`KinematicBody.GetCollsion` and `KinematicBody.GetTrigger` accordingly.
+
+> :warning: Events are not zeroed out between frames. You may encounter stale
+> events if accessed too early or exceeding the count returned by `CollisionCount`/`TriggerCount`.
+
+These are available after KinematicBody has run its FixedUpdate routine for that
+frame.
+
+> :warning: The max number of events per type is 32 (i.e. 32 collisions + 32 triggers)
+
+#### Collision Messages
+
+The KinematicBody can mimic "OnXXX" messages in Unity by enabling the "Send
+Collision Events" boolean.
+
+![KinematicBody with 'Send Collision Events' checked](.github/bodyInspector.png)
+
+Once enabled, components can recieve collision messages by implementing methods
+with the following signatures:
+
+```csharp
+    void OnKinematicCollision(KinematicBody.MoveCollision collision)
+    {
+        // react to collision
+    }
+
+    void OnKinematicTrigger(KinematicBody.MoveCollision trigger)
+    {
+        // react to trigger
+    }
+```
+
+These are sent after `OnPostMove` has been called by the KinematicBody.
+
+The events are received by both objects involved in the collision:
+
+Body             | Other
+-----------------|---------------------------------------
+Body game object | Rigidbody game object
+Body game object | Rigidbody game object comprising a compound collider/trigger
+Body game object | Collider/trigger game object (if no Rigidbody)
+
+This mimics the same rules that Unity applies when determine which game objects
+receive collision messages with normal Rigidbody objects.
 
 ## License
 
