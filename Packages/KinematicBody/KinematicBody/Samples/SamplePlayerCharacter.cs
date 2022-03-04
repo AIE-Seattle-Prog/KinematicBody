@@ -13,9 +13,10 @@ public class SamplePlayerCharacter : MonoBehaviour
 
     private void Update()
     {
-        // send inputs to motor
+        // send move inputs to motor
         motor.MoveInput(new Vector3(Input.GetAxisRaw("Horizontal"), 0.0f, Input.GetAxisRaw("Vertical")));
 
+        // send jump inputs to motor
         if (Input.GetButtonDown("Jump"))
         {
             motor.JumpInput();

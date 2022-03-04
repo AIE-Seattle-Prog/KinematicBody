@@ -20,6 +20,20 @@ which adopts the following convention:
 >
 > [Valve Developer Community, Player Entity](https://developer.valvesoftware.com/wiki/Player_Entity)
 
+## Documentation
+
+- [Importing this Package](#importing-this-package)
+  - [Git UPM Dependency](#git-upm-dependency)
+  - [Embedded Package](#embedded-package)
+- [Quick Start](#quick-start)
+- [API](#api)
+  - [Manipulating the Motor](#manipulating-the-motor)
+  - [Collision Events](#collision-events)
+  - [Collision Messages](#collision-messages)
+- [KinematicBody Lifecycle](#kinematicbody-lifecycle)
+  - [IKinematicMotor Interface](#ikinematicmotor-interface)
+- [License](#license)
+
 ## Importing this Package
 
 > **NOTE**  
@@ -45,18 +59,19 @@ in the `dependencies` array:
 
 For more information, review Unity's documentation on [Git dependencies](https://docs.unity3d.com/Manual/upm-git.html).
 
-> **About Git Dependencies**  
+> :exclamation: **About Git Dependencies**  
 > Git must be available on the command-line's PATH variable in order for Unity
 > to resolve Git packages. If it is not available on the command-line, the
 > package import will fail.
 
 ### Embedded Package
 
-You can download a copy of the `upm` branch which contains the bare minimum
-necessary files for a UPM package. The contents of this archive should be placed
-into its own folder under the Packages folder in your Unity Project.
+You can [download a copy of the `upm` branch](https://github.com/AIE-Seattle-Prog/KinematicBody/archive/refs/heads/upm.zip)
+which contains the bare minimum necessary files for a UPM package. Unzip the
+archive into the Packages folder in your Unity Project.
 
-To verify, the package.json file from this package should be as follows:
+Once done, your Unity project's folder hierarchy should resemble something like
+the following:
 
 ```text
 Assets/
@@ -86,9 +101,14 @@ It is referenced by the **KinematicPlayerMotor** which implements the
 **IKinematicMotor** interface providing implementations for methods that will
 be called by the body when it performs its "Move" update.
 
-Users looking for a basic humanoid character can use this library as-is without
-modification or much additional work aside from integrating it into their
-player prefab and providing the appropriate inputs.
+Finally, player inputs are gathered in a separate class, such as the
+**SampleKinematicCharacter** (described below) and provided to the motor for
+processing.
+
+> :sparkles: **NOTE**  
+> Users looking for a basic humanoid motor can use this library _as-is_
+> without modification or much additional work aside from integrating it into
+> their player prefab and providing the appropriate inputs.
 
 ### Manipulating the Motor
 
@@ -96,20 +116,35 @@ The **KinematicPlayerMotor** is referenced by the **SampleKinematicCharacter**
 which calls the `KinematicPlayerMotor.MoveInput` method to provide a world-space
 input vector which tells the motor which way it should move.
 
+```cs
+/// <summary>
+/// Sample character script demonstrating how to send inputs to a motor. Provided for reference purposes.
+///
+/// Moves in world-space (not relative to any particular camera)
+/// </summary>
+public class SamplePlayerCharacter : MonoBehaviour
+{
+    // The motor we're controlling
+    public KinematicPlayerMotor motor;
+
+    private void Update()
+    {
+        // send move inputs to motor
+        motor.MoveInput(new Vector3(Input.GetAxisRaw("Horizontal"), 0.0f, Input.GetAxisRaw("Vertical")));
+
+        // send jump inputs to motor
+        if (Input.GetButtonDown("Jump"))
+        {
+            motor.JumpInput();
+        }
+    }
+}
+```
+
 Users should implement their own "Character" script that can provide inputs
 with respect to other systems like their camera, current gameplay state, or
 other game-specific considerations.
 
-### KinematicBody Move Process
-
-When the KinematicBody moves in Fixed Update, it follows this process:
-
-![A diagram illustrating the steps taken to move the body w.r.t. the motor](.github/bodyMove.png)
-
-All of the steps listed in a round white box are callbacks that are called by
-the body at the appropriate stage in the process. Steps shown in gray and
-rectangular boxes are performed internally by the body and may not necessarily
-map 1:1 to a method.
 
 ### Collision Events
 
@@ -121,18 +156,24 @@ and `KinematicBody.TriggerCount` on an instance to determine how many collisions
 or triggers it encountered. These can then be retrieved by calling
 `KinematicBody.GetCollsion` and `KinematicBody.GetTrigger` accordingly.
 
-> :warning: Events are not zeroed out between frames. You may encounter stale
-> events if accessed too early or exceeding the count returned by `CollisionCount`/`TriggerCount`.
+> :warning: Events are **not zeroed** out between frames.
+>
+> You may encounter stale events if accessed too early or accessing elements at
+> indices at or beyond the value returned by `CollisionCount`/`TriggerCount`.
+>
+> This may raise an exception in the future to alert of any misuse of the API.
 
 These are available after KinematicBody has run its FixedUpdate routine for that
 frame.
 
-> :warning: The max number of events per type is 32 (i.e. 32 collisions + 32 triggers)
+> :warning: The max number of events per type is 32 (i.e. 32 collisions + 32 triggers = 64 total)
+>
+> This is defined by a _constant_ in the KinematicBody.
 
 #### Collision Messages
 
 The KinematicBody can mimic "OnXXX" messages in Unity by enabling the "Send
-Collision Events" boolean.
+Collision Events" boolean on the KinematicBody.
 
 ![KinematicBody with 'Send Collision Events' checked](.github/bodyInspector.png)
 
@@ -140,6 +181,8 @@ Once enabled, components can recieve collision messages by implementing methods
 with the following signatures:
 
 ```csharp
+    // review KinematicBody.cs for full API expose in a MoveCollision
+
     void OnKinematicCollision(KinematicBody.MoveCollision collision)
     {
         // react to collision
@@ -164,8 +207,48 @@ Body game object | Collider/trigger game object (if no Rigidbody)
 This mimics the same rules that Unity applies when determine which game objects
 receive collision messages with normal Rigidbody objects.
 
+## KinematicBody Lifecycle
+
+When the KinematicBody moves in Fixed Update, it performs multiple phases of
+collision detection. At each stage, callbacks are called by the body to defer
+handling to the motor to allow for varying types of collision responses.
+
+All of the steps listed in a round white box are callbacks that are called by
+the body on the motor assigned to it at the appropriate stage in the process.
+
+Steps shown in gray and rectangular boxes are performed internally by the body
+and may not necessarily map 1:1 to a method.
+
+![A diagram illustrating the steps taken to move the body w.r.t. the motor](.github/bodyMove.png)
+
+### IKinematicMotor Interface
+
+The motor registers these callbacks through its implementation of the
+`IKinematicMotor` interface:
+
+```cs
+// This is an excerpt from KinematicBody.cs
+//
+// See source file for full XML documentation on return values/parameters/etc.
+
+public interface IKinematicMotor
+{
+    Vector3 UpdateVelocity(Vector3 oldVelocity);
+    void OnMoveHit(ref Vector3 curPosition, ref Quaternion curRotation, ref Vector3 curVelocity, Collider other, Vector3 direction, float pen);
+    void OnPreMove();
+    void OnFinishMove(ref Vector3 curPosition, ref Quaternion curRotation, ref Vector3 curVelocity);
+    void OnPostMove();
+}
+
+```
+
+By implementing these callbacks, different types of objects can use the
+KinematicBody to implement different types of movement behavior. Humanoid
+characters may choose to ignore inputs on the Y-axis. Other types of bodies like
+a helicopter would use Y-axis values to apply vertical lift.
+
 ## License
 
-This work is licensed under the MIT License. See [LICENSE.md](LICENSE.md) for details.
+This work is licensed under the **MIT License**. See [LICENSE.md](LICENSE.md) for details.
 
-Copyright 2021 (c) Academy of Interactive Entertainment
+Copyright 2021-2022 (c) Academy of Interactive Entertainment
