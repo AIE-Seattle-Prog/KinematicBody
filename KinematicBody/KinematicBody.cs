@@ -30,7 +30,7 @@ public class KinematicBody : MonoBehaviour
     /// <summary>
     /// Minimum desired distance between nearby surfaces and the surface of this body
     /// </summary>
-    public float contactOffset = 0.005f;
+    public float contactOffset = 0.02f;
     /// <summary>
     /// Minimum amount of allowed penetration
     /// </summary>
@@ -38,7 +38,8 @@ public class KinematicBody : MonoBehaviour
     /// <summary>
     /// Size of the box body in local space inclusive of the contact offset
     /// </summary>
-    public Vector3 LocalBodySizeWithSkin => col.size + Vector3.one * contactOffset;
+    public Vector3 LocalBodySizeWithSkin => col.size + Vector3.one * skinWidth;
+    public Vector3 LocalBodySizeWithContactOffset => col.size + Vector3.one * (contactOffset + skinWidth);
     public Vector3 GetLocalOffsetToCenter()
     {
         return col.center;
@@ -107,7 +108,7 @@ public class KinematicBody : MonoBehaviour
     public int CollisionCount { get; private set; }
     public int TriggerCount { get; private set; }
 
-    public bool SendCollisionEvents = false;
+    public bool SendCollisionMessages = false;
 
     public MoveCollision GetCollision(int index)
     {
@@ -145,7 +146,7 @@ public class KinematicBody : MonoBehaviour
             out var mtv,
             out var pen);
 
-        if (isOverlap && pen > skinWidth)
+        if (isOverlap)
         {
             MoveCollision collision = new MoveCollision
             {
@@ -237,24 +238,25 @@ public class KinematicBody : MonoBehaviour
         Vector3 projectedVel = InternalVelocity;
         Quaternion projectedRot = rbody.rotation;
 
-        //
-        // depenetrate from overlapping objects
-        //
-
         // scale check
         Debug.Assert(Mathf.Approximately(transform.lossyScale.sqrMagnitude, 3) == true, "Scaling is not supported on KinematicBody game objects.");
 
         Vector3 sizeOriginal = col.size;
-        Vector3 sizeWithSkin = col.size + Vector3.one * contactOffset;
 
-        var candidates = Overlap(projectedPos, sizeWithSkin / 2, -1, QueryTriggerInteraction.Collide);
+        //
+        // gather contacts
+        //
+
+        var contacts = Overlap(projectedPos, LocalBodySizeWithContactOffset / 2, -1, QueryTriggerInteraction.Collide);
+
+        // depenetrate from overlapping objects
 
         // HACK: since we can't pass a custom size to Physics.ComputePenetration (see below),
         //       we need to assign it directly to the collide prior to calling it and then
         //       revert the change afterwards
-        col.size = sizeWithSkin;
+        col.size = LocalBodySizeWithSkin;
 
-        foreach (var candidate in candidates)
+        foreach (var candidate in contacts)
         {
             DeferredCollideAndSlide(ref projectedPos, ref projectedRot, ref projectedVel, candidate);
         }
@@ -275,7 +277,8 @@ public class KinematicBody : MonoBehaviour
         // callback for after move is complete
         motor.OnPostMove();
 
-        if(SendCollisionEvents)
+        // enumerate collision messages if applicable
+        if(SendCollisionMessages)
         {
             // send collisions
             for(int i = 0; i < CollisionCount; ++i)
@@ -322,11 +325,11 @@ public class KinematicBody : MonoBehaviour
 
         // draw box with contact offset
         Gizmos.color = Color.cyan;
-        Gizmos.DrawWireCube(col.center, col.size + Vector3.one * contactOffset);
+        Gizmos.DrawWireCube(col.center, LocalBodySizeWithContactOffset);
 
         // draw box with skin width
         Gizmos.color = Color.yellow;
-        Gizmos.DrawWireCube(col.center, col.size - Vector3.one * skinWidth);
+        Gizmos.DrawWireCube(col.center, LocalBodySizeWithSkin);
     }
 
     private void Reset()

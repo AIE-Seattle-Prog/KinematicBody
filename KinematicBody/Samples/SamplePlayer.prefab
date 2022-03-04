@@ -129,10 +129,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   col: {fileID: 1631130482782817081}
   rbody: {fileID: 1631130482782817080}
-  contactOffset: 0.005
-  skinWidth: 0.01
+  contactOffset: 0.02
+  skinWidth: 0.001
   GravityScale: {x: 0, y: 8, z: 0}
-  SendCollisionEvents: 1
+  SendCollisionMessages: 1
 --- !u!114 &1631130482782817082
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -171,5 +171,3 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   motor: {fileID: 1631130482782817082}
-  useInputOverride: 0
-  inputOverride: {x: 0, y: 0, z: 0}
