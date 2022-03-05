@@ -132,12 +132,30 @@ public class KinematicBody : MonoBehaviour
         InternalVelocity = bodyVelocity;
     }
 
+    public bool ComputePenetration(Vector3 bodyPosition, Quaternion bodyRotation, Collider other, Vector3 otherPosition, Quaternion otherRotation, out Vector3 direction, out float pen)
+    {
+        direction = Vector3.zero;
+        pen = 0.0f;
+
+        // ignore self collision
+        if (other == col) { return false; }
+
+        return Physics.ComputePenetration(col,
+            bodyPosition,
+            bodyRotation,
+            other,
+            other.transform.position,
+            other.transform.rotation,
+            out direction,
+            out pen);
+    }
+
     public void DeferredCollideAndSlide(ref Vector3 bodyPosition, ref Quaternion bodyRotation, ref Vector3 bodyVelocity, Collider other)
     {
         // ignore self collision
         if(other == col) { return; }
             
-        bool isOverlap = Physics.ComputePenetration(col,
+        bool isOverlap = ComputePenetration(
             bodyPosition,
             bodyRotation,
             other,
@@ -215,12 +233,35 @@ public class KinematicBody : MonoBehaviour
 
     private void FixedUpdate()
     {
+        // scale check
+        Debug.Assert(Mathf.Approximately(transform.lossyScale.sqrMagnitude, 3) == true, "Scaling is not supported on KinematicBody game objects.");
+
         Vector3 startPosition = rbody.position;
-        
+        Vector3 startSize = col.size;
+
+        //
+        // begin kinematicbody lifecycle
+        //
+
         motor.OnPreMove();
+
+        // clear bookkeeping variables
 
         CollisionCount = 0;
         TriggerCount = 0;
+
+        //
+        // resolve pre-overlapping colliders if any
+        //
+        var preexistingContacts = Overlap(startPosition, LocalBodySizeWithContactOffset / 2, -1, QueryTriggerInteraction.Ignore);
+        foreach(var contact in preexistingContacts)
+        {
+
+        }
+
+        //
+        // update internal forces
+        //
 
         InternalVelocity = motor.UpdateVelocity(InternalVelocity);
 
@@ -237,11 +278,6 @@ public class KinematicBody : MonoBehaviour
         Vector3 projectedPos = rbody.position + (InternalVelocity * Time.deltaTime);
         Vector3 projectedVel = InternalVelocity;
         Quaternion projectedRot = rbody.rotation;
-
-        // scale check
-        Debug.Assert(Mathf.Approximately(transform.lossyScale.sqrMagnitude, 3) == true, "Scaling is not supported on KinematicBody game objects.");
-
-        Vector3 sizeOriginal = col.size;
 
         //
         // gather contacts
@@ -262,7 +298,7 @@ public class KinematicBody : MonoBehaviour
         }
 
         // HACK: restoring size (see above HACK)
-        col.size = sizeOriginal;
+        col.size = startSize;
         
         // callback: pre-processing move before applying 
         motor.OnFinishMove(ref projectedPos, ref projectedRot, ref projectedVel);
@@ -351,7 +387,7 @@ public interface IKinematicMotor
     Vector3 UpdateVelocity(Vector3 oldVelocity);
 
     /// <summary>
-    /// Called by KinematicBody when the body hits another collider during its move
+    /// Called by KinematicBody when the body needs to resolve an overlap
     /// </summary>
     /// <param name="curPosition">Position of the body at time of impact</param>
     /// <param name="curRotation">Rotation of the body at time of impact</param>
