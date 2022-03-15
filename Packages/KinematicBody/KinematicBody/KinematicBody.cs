@@ -112,6 +112,8 @@ public class KinematicBody : MonoBehaviour
     [Header("Body Settings")]
     public bool SendCollisionMessages = false;
 
+    public bool useSweeping = true;
+
     public MoveCollision GetCollision(int index)
     {
         if(index >= CollisionCount || index < 0) { throw new IndexOutOfRangeException(); }
@@ -155,26 +157,35 @@ public class KinematicBody : MonoBehaviour
     public bool MoveCollideAndSlide(ref Vector3 bodyPosition, ref Quaternion bodyRotation, ref Vector3 bodyVelocity, Collider other)
     {
         bool didOverlap = CollideAndSlideWithData(ref bodyPosition, ref bodyRotation, ref bodyVelocity, other, out var data);
-        
-        // collisions
-        MoveCollision collision = new MoveCollision
+
+        if (other != col)
         {
-            bodyPosition = bodyPosition,
-            bodyRotation = bodyRotation,
-            bodyVelocity = bodyVelocity,
-            otherCollider = other,
-            collisionDirection = data.direction,
-            collisionPenetration = data.penetrationDepth
-        };
-        
-        if (!other.isTrigger)
-        {
-            if (CollisionCount < MAX_COLLISIONS) { LastCollisions[CollisionCount++] = collision; }
-        }
-        // triggers
-        else
-        {
-            if (TriggerCount < MAX_COLLISIONS) { LastTriggers[TriggerCount++] = collision; }
+            // collisions
+            MoveCollision collision = new MoveCollision
+            {
+                bodyPosition = bodyPosition,
+                bodyRotation = bodyRotation,
+                bodyVelocity = bodyVelocity,
+                otherCollider = other,
+                collisionDirection = data.direction,
+                collisionPenetration = data.penetrationDepth
+            };
+
+            if (!other.isTrigger)
+            {
+                if (CollisionCount < MAX_COLLISIONS)
+                {
+                    LastCollisions[CollisionCount++] = collision;
+                }
+            }
+            // triggers
+            else
+            {
+                if (TriggerCount < MAX_COLLISIONS)
+                {
+                    LastTriggers[TriggerCount++] = collision;
+                }
+            }
         }
 
         return didOverlap;
@@ -196,6 +207,8 @@ public class KinematicBody : MonoBehaviour
 
         data = new PenetrationData() { other = other, direction = mtv, penetrationDepth = pen };
         
+        // handle hits registered by Compute Penetration - this is OK because the
+        // body will be smaller than the overall collision volume
         if (isOverlap)
         {
             if (!other.isTrigger)
@@ -287,26 +300,31 @@ public class KinematicBody : MonoBehaviour
 
         InternalVelocity = motor.UpdateVelocity(InternalVelocity);
         
-        Vector3 projectedPos = rbody.position + (InternalVelocity * Time.deltaTime);
+        Vector3 projectedPos = startPosition + InternalVelocity * Time.deltaTime;
         Vector3 projectedVel = InternalVelocity;
         Quaternion projectedRot = rbody.rotation;
 
-        // try sweeping the body to its new position
-        var traces = Trace(startPosition, projectedPos, LocalBodySizeWithContactOffset, -1, QueryTriggerInteraction.Ignore);
-        // can we go directly to the projected position?
-        if (traces.Length == 0)
+        if (useSweeping)
         {
-            goto FinishMove;
+            // try sweeping the body to its new position
+            var traces = Trace(startPosition, projectedPos, LocalBodySize / 2, -1, QueryTriggerInteraction.Ignore);
+            // handle obstacles if any
+            if (traces.Length > 0)
+            {
+                Vector3 direction = InternalVelocity.normalized;
+                projectedPos = startPosition + direction * traces[0].distance;
+                Vector3 reprojectedVel = Vector3.ProjectOnPlane(projectedVel, traces[0].normal);
+                reprojectedVel.y = projectedVel.y;
+                //projectedVel = reprojectedVel;
+            }
         }
-        
+
         //
-        // gather contacts
+        // gather contacts at location
         //
 
         var contacts = Overlap(projectedPos, LocalBodySizeWithContactOffset / 2, -1, QueryTriggerInteraction.Collide);
-
-        // depenetrate from overlapping objects
-
+        
         // HACK: since we can't pass a custom size to Physics.ComputePenetration (see below),
         //       we need to assign it directly to the collide prior to calling it and then
         //       revert the change afterwards
@@ -321,8 +339,6 @@ public class KinematicBody : MonoBehaviour
         // HACK: restoring size (see above HACK)
         col.size = startSize;
         
-        FinishMove:
-        
         // callback: pre-processing move before applying 
         motor.OnFinishMove(ref projectedPos, ref projectedRot, ref projectedVel);
         
@@ -332,9 +348,7 @@ public class KinematicBody : MonoBehaviour
         InternalVelocity = projectedVel;
 
         Velocity = (projectedPos - startPosition) / Time.fixedDeltaTime;
-        
-        PostMove:
-        
+
         // callback for after move is complete
         motor.OnPostMove();
 

@@ -1605,6 +1605,16 @@ PrefabInstance:
       propertyPath: GravityScale.y
       value: 8
       objectReference: {fileID: 0}
+    - target: {fileID: 1631130482782817083, guid: e0c010da1117f5549a6d8be69a2fbd1a,
+        type: 3}
+      propertyPath: skinWidth
+      value: 0.01
+      objectReference: {fileID: 0}
+    - target: {fileID: 1631130482782817083, guid: e0c010da1117f5549a6d8be69a2fbd1a,
+        type: 3}
+      propertyPath: useSweeping
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 1631130482782817084, guid: e0c010da1117f5549a6d8be69a2fbd1a,
         type: 3}
       propertyPath: m_RootOrder

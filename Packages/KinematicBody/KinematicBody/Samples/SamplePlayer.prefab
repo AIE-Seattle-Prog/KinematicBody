@@ -129,10 +129,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   col: {fileID: 1631130482782817081}
   rbody: {fileID: 1631130482782817080}
-  contactOffset: 0.02
   skinWidth: 0.001
-  GravityScale: {x: 0, y: 8, z: 0}
+  contactOffset: 0.02
   SendCollisionMessages: 1
+  useSweeping: 1
 --- !u!114 &1631130482782817082
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -146,9 +146,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   body: {fileID: 1631130482782817083}
+  GravityScale: {x: 0, y: 2, z: 0}
   moveSpeed: 8
   jumpHeight: 2
-  maxGroundAngle: 75
+  maxGroundAngle: 60
   groundAccel: 200
   groundFriction: 12
   groundLayers:
