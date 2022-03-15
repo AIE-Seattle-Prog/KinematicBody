@@ -28,18 +28,21 @@ public class KinematicBody : MonoBehaviour
     /// </summary>
     public Vector3 LocalBodySize => col.size;
     /// <summary>
-    /// Minimum desired distance between nearby surfaces and the surface of this body
-    /// </summary>
-    public float contactOffset = 0.02f;
-    /// <summary>
-    /// Minimum amount of allowed penetration
+    /// Buffer zone around the actual collider of the body
     /// </summary>
     public float skinWidth = 0.01f;
     /// <summary>
-    /// Size of the box body in local space inclusive of the contact offset
+    /// Additional buffer zone around the skin that generates contacts
+    /// </summary>
+    public float contactOffset = 0.01f;
+    /// <summary>
+    /// Size of the box body in local space inclusive of the skin
     /// </summary>
     public Vector3 LocalBodySizeWithSkin => col.size + Vector3.one * skinWidth;
-    public Vector3 LocalBodySizeWithContactOffset => col.size + Vector3.one * (contactOffset + skinWidth);
+    /// <summary>
+    /// Size of the box body in local space inclusive of the contact offset
+    /// </summary>
+    public Vector3 LocalBodySizeWithContactOffset => LocalBodySizeWithSkin + Vector3.one * contactOffset;
     public Vector3 GetLocalOffsetToCenter()
     {
         return col.center;
@@ -56,20 +59,6 @@ public class KinematicBody : MonoBehaviour
     /// Offset from the pivot of the body to the feet
     /// </summary>
     public Vector3 FootOffset => (FootPosition - transform.position);
-
-    [Header("Body Settings")]
-    public Vector3 GravityScale = new Vector3(0, 2, 0);
-    // velocity of the final object inclusive of external forces, given in world-space
-    public Vector3 EffectiveGravity
-    {
-        get
-        {
-            Vector3 g = Physics.gravity;
-            g.Scale(GravityScale);
-            return g;
-        }
-    }
-
     /// <summary>
     /// The Internal Velocity of the player represents their ideal velocity
     /// </summary>    
@@ -101,13 +90,21 @@ public class KinematicBody : MonoBehaviour
         public Vector3 collisionDirection;
         public float collisionPenetration;
     }
-
+    [System.Serializable]
+    public struct PenetrationData
+    {
+        public Collider other;
+        public Vector3 direction;
+        public float penetrationDepth;
+    }
+    
     public readonly static int MAX_COLLISIONS = 32;
     private MoveCollision[] LastCollisions = new MoveCollision[MAX_COLLISIONS];
     private MoveCollision[] LastTriggers = new MoveCollision[MAX_COLLISIONS];
     public int CollisionCount { get; private set; }
     public int TriggerCount { get; private set; }
 
+    [Header("Body Settings")]
     public bool SendCollisionMessages = false;
 
     public MoveCollision GetCollision(int index)
@@ -124,7 +121,7 @@ public class KinematicBody : MonoBehaviour
 
     public void CollideAndSlide(Vector3 bodyPosition, Quaternion bodyRotation, Vector3 bodyVelocity, Collider other)
     {
-        DeferredCollideAndSlide(ref bodyPosition, ref bodyRotation, ref bodyVelocity, other);
+        MoveCollideAndSlide(ref bodyPosition, ref bodyRotation, ref bodyVelocity, other);
         
         // apply movement immediately
         rbody.MovePosition(bodyPosition);
@@ -150,10 +147,38 @@ public class KinematicBody : MonoBehaviour
             out pen);
     }
 
-    public void DeferredCollideAndSlide(ref Vector3 bodyPosition, ref Quaternion bodyRotation, ref Vector3 bodyVelocity, Collider other)
+    public bool MoveCollideAndSlide(ref Vector3 bodyPosition, ref Quaternion bodyRotation, ref Vector3 bodyVelocity, Collider other)
+    {
+        bool didOverlap = CollideAndSlideWithData(ref bodyPosition, ref bodyRotation, ref bodyVelocity, other, out var data);
+        
+        // collisions
+        MoveCollision collision = new MoveCollision
+        {
+            bodyPosition = bodyPosition,
+            bodyRotation = bodyRotation,
+            bodyVelocity = bodyVelocity,
+            otherCollider = other,
+            collisionDirection = data.direction,
+            collisionPenetration = data.penetrationDepth
+        };
+        
+        if (!other.isTrigger)
+        {
+            if (CollisionCount < MAX_COLLISIONS) { LastCollisions[CollisionCount++] = collision; }
+        }
+        // triggers
+        else
+        {
+            if (TriggerCount < MAX_COLLISIONS) { LastTriggers[TriggerCount++] = collision; }
+        }
+
+        return didOverlap;
+    }
+    
+    public bool CollideAndSlideWithData(ref Vector3 bodyPosition, ref Quaternion bodyRotation, ref Vector3 bodyVelocity, Collider other, out PenetrationData data)
     {
         // ignore self collision
-        if(other == col) { return; }
+        if(other == col) { data = new PenetrationData(); return false; }
             
         bool isOverlap = ComputePenetration(
             bodyPosition,
@@ -164,31 +189,18 @@ public class KinematicBody : MonoBehaviour
             out var mtv,
             out var pen);
 
+        data = new PenetrationData() { other = other, direction = mtv, penetrationDepth = pen };
+        
         if (isOverlap)
         {
-            MoveCollision collision = new MoveCollision
-            {
-                bodyPosition = bodyPosition,
-                bodyRotation = bodyRotation,
-                bodyVelocity = bodyVelocity,
-                otherCollider = other,
-                collisionDirection = mtv,
-                collisionPenetration = pen
-            };
-
-            // collisions
             if (!other.isTrigger)
             {
                 // defer to motor to resolve hit
                 motor.OnMoveHit(ref bodyPosition, ref bodyRotation, ref bodyVelocity, other, mtv, pen);
-                if (CollisionCount < MAX_COLLISIONS) { LastCollisions[CollisionCount++] = collision; }
-            }
-            // triggers
-            else
-            {
-                if (TriggerCount < MAX_COLLISIONS) { LastTriggers[TriggerCount++] = collision; }
             }
         }
+        
+        return isOverlap;
     }
     
     public Collider[] Overlap(Vector3 bodyPosition, int layerMask = ~0, QueryTriggerInteraction queryMode = QueryTriggerInteraction.UseGlobal)
@@ -204,8 +216,13 @@ public class KinematicBody : MonoBehaviour
     
     public RaycastHit[] Cast(Vector3 bodyPosition, Vector3 direction, float distance, int layerMask = ~0, QueryTriggerInteraction queryMode = QueryTriggerInteraction.UseGlobal)
     {
+        return Cast(bodyPosition, LocalBodySize / 2, direction, distance, layerMask, queryMode);
+    }
+    
+    public RaycastHit[] Cast(Vector3 bodyPosition, Vector3 bodyHalfExtents, Vector3 direction, float distance, int layerMask = ~0, QueryTriggerInteraction queryMode = QueryTriggerInteraction.UseGlobal)
+    {
         bodyPosition = GetCenterAtBodyPosition(bodyPosition);
-        var allHits = Physics.BoxCastAll(bodyPosition, LocalBodySizeWithSkin/2, direction, rbody.rotation, distance, layerMask, queryMode);
+        var allHits = Physics.BoxCastAll(bodyPosition, bodyHalfExtents, direction, rbody.rotation, distance, layerMask, queryMode);
 
         // TODO: this is terribly inefficient and generates garbage, please optimize this
         List<RaycastHit> filteredhits = new List<RaycastHit>(allHits);
@@ -220,6 +237,15 @@ public class KinematicBody : MonoBehaviour
 
         Vector3 dir = offset / len;
         return Cast(startBodyPosition, dir, len, layerMask, queryMode);
+    }
+    
+    public RaycastHit[] Trace(Vector3 startBodyPosition, Vector3 endBodyPosition, Vector3 bodyHalfExtents, int layerMask = ~0, QueryTriggerInteraction queryMode = QueryTriggerInteraction.UseGlobal)
+    {
+        Vector3 offset = endBodyPosition - startBodyPosition;
+        float len = offset.magnitude;
+
+        Vector3 dir = offset / len;
+        return Cast(startBodyPosition, bodyHalfExtents, dir, len, layerMask, queryMode);
     }
     
     //
@@ -253,32 +279,40 @@ public class KinematicBody : MonoBehaviour
         //
         // resolve pre-overlapping colliders if any
         //
+        /*
         var preexistingContacts = Overlap(startPosition, LocalBodySizeWithContactOffset / 2, -1, QueryTriggerInteraction.Ignore);
         foreach(var contact in preexistingContacts)
         {
 
         }
+        */
 
         //
         // update internal forces
         //
 
         InternalVelocity = motor.UpdateVelocity(InternalVelocity);
-
-        //
-        // integrate external forces
-        //
         
-        // apply gravity (if enabled)
-        if (rbody.useGravity)
-        {
-            InternalVelocity += EffectiveGravity * Time.deltaTime;
-        }
-
         Vector3 projectedPos = rbody.position + (InternalVelocity * Time.deltaTime);
         Vector3 projectedVel = InternalVelocity;
         Quaternion projectedRot = rbody.rotation;
 
+        var traces = Trace(startPosition, projectedPos, LocalBodySizeWithContactOffset, -1, QueryTriggerInteraction.Ignore);
+        bool isClean = true;
+        foreach(var trace in traces)
+        {
+            if (trace.collider != BodyCollider)
+            {
+                isClean = false;
+                break;
+            }
+        }
+
+        if (isClean)
+        {
+            goto FinishMove;
+        }
+        
         //
         // gather contacts
         //
@@ -294,11 +328,14 @@ public class KinematicBody : MonoBehaviour
 
         foreach (var candidate in contacts)
         {
-            DeferredCollideAndSlide(ref projectedPos, ref projectedRot, ref projectedVel, candidate);
+            // TODO: consider proper contact offsets
+            MoveCollideAndSlide(ref projectedPos, ref projectedRot, ref projectedVel, candidate);
         }
 
         // HACK: restoring size (see above HACK)
         col.size = startSize;
+        
+        FinishMove:
         
         // callback: pre-processing move before applying 
         motor.OnFinishMove(ref projectedPos, ref projectedRot, ref projectedVel);
@@ -309,6 +346,8 @@ public class KinematicBody : MonoBehaviour
         InternalVelocity = projectedVel;
 
         Velocity = (projectedPos - startPosition) / Time.fixedDeltaTime;
+        
+        PostMove:
         
         // callback for after move is complete
         motor.OnPostMove();
@@ -342,7 +381,6 @@ public class KinematicBody : MonoBehaviour
 
     private void OnValidate()
     {
-        contactOffset = Mathf.Clamp(contactOffset, 0.001f, float.PositiveInfinity);
         skinWidth = Mathf.Clamp(skinWidth, 0.001f, float.PositiveInfinity);
 
         if (rbody != null)
@@ -359,13 +397,13 @@ public class KinematicBody : MonoBehaviour
         // don't support scaling at this time - recreate the TRS matrix assuming unit scale
         Gizmos.matrix = Matrix4x4.TRS(transform.position, transform.rotation, Vector3.one);
 
-        // draw box with contact offset
-        Gizmos.color = Color.cyan;
-        Gizmos.DrawWireCube(col.center, LocalBodySizeWithContactOffset);
-
         // draw box with skin width
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireCube(col.center, LocalBodySizeWithSkin);
+        
+        // draw box with skin width
+        Gizmos.color = Color.cyan;
+        Gizmos.DrawWireCube(col.center, LocalBodySizeWithContactOffset);
     }
 
     private void Reset()

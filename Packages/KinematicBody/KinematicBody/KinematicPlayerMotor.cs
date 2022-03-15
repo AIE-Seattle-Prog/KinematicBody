@@ -26,6 +26,18 @@ public class KinematicPlayerMotor : MonoBehaviour, IKinematicMotor
         set => body.BodyRigidbody.rotation = value;
     }
 
+    public Vector3 GravityScale = new Vector3(0, 2, 0);
+    // velocity of the final object inclusive of external forces, given in world-space
+    public Vector3 EffectiveGravity
+    {
+        get
+        {
+            Vector3 g = Physics.gravity;
+            g.Scale(GravityScale);
+            return g;
+        }
+    }
+    
     [Header("Common Movement Settings")]
     public float moveSpeed = 8.0f;
     public float jumpHeight = 2.0f;
@@ -37,7 +49,13 @@ public class KinematicPlayerMotor : MonoBehaviour, IKinematicMotor
     public LayerMask groundLayers = 1 << 0;
     public float maxGroundAdhesionDistance = 0.1f;
     
+    /// <summary>
+    /// Is the motor grounded this frame?
+    /// </summary>
     public bool Grounded { get; private set; }
+    /// <summary>
+    /// Was the motor grounded last frame?
+    /// </summary>
     private bool wasGrounded;
 
     public float stepHeight = 0.1f;
@@ -113,7 +131,7 @@ public class KinematicPlayerMotor : MonoBehaviour, IKinematicMotor
         // can we step over this?
         if (wasGrounded)
         {
-            var overlaps = body.Overlap(stepInitial, body.LocalBodySizeWithSkin / 2.0f, -1, QueryTriggerInteraction.Ignore);
+            var overlaps = body.Overlap(stepInitial, body.LocalBodySize / 2.0f, -1, QueryTriggerInteraction.Ignore);
             if (overlaps.Length == 0 ||
                 (overlaps.Length == 1 && overlaps[0] == body.BodyCollider))
             {
@@ -129,6 +147,27 @@ public class KinematicPlayerMotor : MonoBehaviour, IKinematicMotor
                         return true;
                     }
                 }
+            }
+        }
+
+        return false;
+    }
+
+    private bool QueryGround(Vector3 bodyPosition, out RaycastHit[] hits)
+    {
+        hits = body.Trace(bodyPosition, bodyPosition + EffectiveGravity * (Time.deltaTime * Time.deltaTime), -1, QueryTriggerInteraction.Ignore);
+
+        Debug.DrawLine(bodyPosition, bodyPosition + EffectiveGravity * (Time.deltaTime * Time.deltaTime));
+
+        for (int i = 0; i < hits.Length; ++i)
+        {
+            var other = hits[i];
+            if (other.point != Vector3.zero &&
+                groundLayers.Test(other.collider.gameObject.layer) && // require ground layer
+                other.normal.y > 0 && // direction check
+                Vector3.Angle(other.normal, Vector3.up) < maxGroundAngle) // angle check
+            {
+                return true;
             }
         }
 
@@ -155,7 +194,7 @@ public class KinematicPlayerMotor : MonoBehaviour, IKinematicMotor
             {
                 JumpedThisFrame = true;
 
-                velocity.y += Mathf.Sqrt(-2.0f * body.EffectiveGravity.y * jumpHeight);
+                velocity.y += Mathf.Sqrt(-2.0f * EffectiveGravity.y * jumpHeight);
             }
         }
         
@@ -186,6 +225,16 @@ public class KinematicPlayerMotor : MonoBehaviour, IKinematicMotor
         {
             accelMag = moveSpeed - velocityProj;
         }
+        
+        //
+        // integrate external forces
+        //
+        
+        // apply gravity (if enabled)
+        if (!isGrounded && body.BodyRigidbody.useGravity)
+        {
+            velocity += EffectiveGravity * Time.deltaTime;
+        }
 
         return velocity + (moveWish * accelMag);
     }
@@ -202,8 +251,6 @@ public class KinematicPlayerMotor : MonoBehaviour, IKinematicMotor
             // only change Y-position if bumping into the floor
             curPosition.y += direction.y * (pen);
             curVelocity.y = clipped.y;
-            
-            Grounded = true;
         }
         // other (wall/obstacle/stairs)
         else
@@ -223,15 +270,20 @@ public class KinematicPlayerMotor : MonoBehaviour, IKinematicMotor
     {
         // reset frame data
         JumpedThisFrame = false;
-        Grounded = false;
+        Grounded = QueryGround(Position, out _);
     }
 
     public void OnFinishMove(ref Vector3 curPosition, ref Quaternion curRotation, ref Vector3 curVelocity)
     {
         // Ground Adhesion
 
-        // early exit if we're already grounded or jumping
-        if (Grounded || JumpedThisFrame || !wasGrounded) return;
+        // early exit if...
+        // - we weren't grounded last frame
+        // - we are jumping this frame
+        
+        bool isCurrentlyGrounded = QueryGround(curPosition, out _); 
+        
+        if (isCurrentlyGrounded || JumpedThisFrame || !wasGrounded) return;
         
         var groundCandidates = body.Cast(curPosition, Vector3.down, maxGroundAdhesionDistance, groundLayers, QueryTriggerInteraction.Ignore);
         Vector3 snapPosition = curPosition;
@@ -241,10 +293,10 @@ public class KinematicPlayerMotor : MonoBehaviour, IKinematicMotor
             if(candidate.point == Vector3.zero) { continue; }
 
             // NOTE: This code assumes that the ground will always be below us
-            snapPosition.y = candidate.point.y - body.FootOffset.y - body.contactOffset;
+            snapPosition.y = candidate.point.y - body.FootOffset.y - body.skinWidth;
             
             // Snap to the ground - perform any necessary collision and sliding logic
-            body.DeferredCollideAndSlide(ref snapPosition, ref curRotation, ref curVelocity, candidate.collider);
+            body.MoveCollideAndSlide(ref snapPosition, ref curRotation, ref curVelocity, candidate.collider);
             break;
         }
 
@@ -254,7 +306,7 @@ public class KinematicPlayerMotor : MonoBehaviour, IKinematicMotor
     public void OnPostMove()
     {
         // record grounded status for next frame
-        wasGrounded = Grounded;
+        wasGrounded = QueryGround(Position, out _);
     }
     
     //
