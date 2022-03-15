@@ -63,6 +63,11 @@ public class KinematicBody : MonoBehaviour
     /// The Internal Velocity of the player represents their ideal velocity
     /// </summary>    
     public Vector3 InternalVelocity { get; set; }
+    /// <summary>
+    /// The interpolated velocity of the player
+    ///
+    /// To set the body's velocity, see InternalVelocity
+    /// </summary>    
     public Vector3 Velocity { get; private set; }
 
     public Vector3 VelocityXZ { get { Vector3 v = Velocity; v.y = 0.0f; return v; } }
@@ -277,17 +282,6 @@ public class KinematicBody : MonoBehaviour
         TriggerCount = 0;
 
         //
-        // resolve pre-overlapping colliders if any
-        //
-        /*
-        var preexistingContacts = Overlap(startPosition, LocalBodySizeWithContactOffset / 2, -1, QueryTriggerInteraction.Ignore);
-        foreach(var contact in preexistingContacts)
-        {
-
-        }
-        */
-
-        //
         // update internal forces
         //
 
@@ -297,18 +291,10 @@ public class KinematicBody : MonoBehaviour
         Vector3 projectedVel = InternalVelocity;
         Quaternion projectedRot = rbody.rotation;
 
+        // try sweeping the body to its new position
         var traces = Trace(startPosition, projectedPos, LocalBodySizeWithContactOffset, -1, QueryTriggerInteraction.Ignore);
-        bool isClean = true;
-        foreach(var trace in traces)
-        {
-            if (trace.collider != BodyCollider)
-            {
-                isClean = false;
-                break;
-            }
-        }
-
-        if (isClean)
+        // can we go directly to the projected position?
+        if (traces.Length == 0)
         {
             goto FinishMove;
         }
